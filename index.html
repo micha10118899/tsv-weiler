@@ -1,0 +1,804 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TSV Weiler zum Stein - Belegungsplan & Terminkalender</title>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <style>
+        :root {
+            --primary: #1b5e20;
+            --primary-light: #4c8c4a;
+            --primary-dark: #003300;
+            --accent: #e8f5e9;
+            --warning-bg: #fff3e0;
+            --warning-text: #e65100;
+            --danger: #d32f2f;
+            --text-main: #2c3e50;
+            --bg-body: #f4f7f6;
+            --card-bg: #ffffff;
+            --border: #cccccc;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; }
+        body { background-color: var(--bg-body); color: var(--text-main); line-height: 1.3; font-size: 13px; padding-bottom: 20px; }
+
+        header {
+            background: linear-gradient(135deg, var(--primary-dark), var(--primary));
+            color: white;
+            padding: 0.6rem 1.2rem;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+
+        .header-title h1 { font-size: 1.3rem; font-weight: 700; }
+        .header-title p { font-size: 0.8rem; opacity: 0.9; }
+
+        .admin-controls { display: flex; gap: 0.5rem; align-items: center; }
+        
+        .btn {
+            padding: 0.35rem 0.7rem;
+            border-radius: 4px;
+            border: none;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            font-size: 0.8rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.3rem;
+        }
+
+        .btn-primary { background-color: white; color: var(--primary); }
+        .btn-primary:hover { background-color: var(--accent); }
+        .btn-excel { background-color: #2e7d32; color: white; }
+        .btn-excel:hover { background-color: #1b5e20; }
+        .btn-danger { background-color: var(--danger); color: white; }
+        .btn-secondary { background-color: #555; color: white; }
+
+        nav.tabs-nav {
+            background-color: var(--card-bg);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            padding: 0 1rem;
+            gap: 0.5rem;
+        }
+
+        .tab-btn {
+            padding: 0.5rem 0.8rem;
+            background: none;
+            border: none;
+            border-bottom: 3px solid transparent;
+            font-weight: 600;
+            color: #555;
+            cursor: pointer;
+            font-size: 0.85rem;
+        }
+
+        .tab-btn.active {
+            color: var(--primary);
+            border-bottom-color: var(--primary);
+        }
+
+        main { width: 100%; max-width: 100%; padding: 0.5rem; }
+
+        .controls-bar {
+            background-color: var(--card-bg);
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            margin-bottom: 0.5rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            border: 1px solid #e0e0e0;
+        }
+
+        .week-nav { display: flex; align-items: center; gap: 0.5rem; }
+        .week-nav span { font-size: 0.95rem; font-weight: 700; color: var(--primary); min-width: 160px; text-align: center; }
+
+        .view-switcher { display: flex; gap: 2px; background: #eee; padding: 2px; border-radius: 4px; }
+        .view-btn { padding: 0.25rem 0.5rem; border: none; background: none; border-radius: 3px; cursor: pointer; font-weight: 600; font-size: 0.78rem; }
+        .view-btn.active { background: white; color: var(--primary); box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
+
+        #scheduleFocusTarget {
+            scroll-margin-top: -65px;
+        }
+
+        .grid-schedule {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 0.4rem;
+            width: 100%;
+        }
+
+        @media (max-width: 900px) {
+            .grid-schedule {
+                grid-template-columns: repeat(6, minmax(140px, 1fr));
+                overflow-x: auto;
+            }
+        }
+
+        .day-column {
+            background: var(--card-bg);
+            border-radius: 5px;
+            border: 1px solid var(--border);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+        }
+
+        .day-header {
+            background: var(--accent);
+            color: var(--primary-dark);
+            padding: 0.35rem 0.4rem;
+            text-align: center;
+            border-bottom: 1.5px solid var(--primary-light);
+        }
+
+        .day-header h3 { font-size: 0.9rem; font-weight: 700; line-height: 1.1; }
+        .day-header .day-date { font-size: 0.75rem; font-weight: 600; opacity: 0.85; }
+
+        .event-list { padding: 0.35rem; display: flex; flex-direction: column; gap: 0.35rem; flex-grow: 1; }
+
+        .event-card {
+            border: 1px solid #ddd;
+            border-left: 3px solid var(--primary);
+            padding: 0.35rem 0.47rem;
+            border-radius: 4px;
+            background: white;
+            position: relative;
+            font-size: 0.78rem;
+            line-height: 1.25;
+        }
+
+        .event-card.cancelled {
+            border-left-color: var(--danger);
+            background-color: #fdf2f2;
+        }
+
+        .event-card.cancelled .event-title,
+        .event-card.cancelled .event-time {
+            text-decoration: line-through;
+            color: var(--danger);
+        }
+
+        .event-card.ferien {
+            border-left-color: var(--warning-text);
+            background-color: var(--warning-bg);
+        }
+
+        .event-time { font-size: 0.75rem; font-weight: 700; color: #444; }
+        .event-title { font-size: 0.82rem; font-weight: 700; color: var(--text-main); margin: 0.1rem 0; word-break: break-word; }
+        .event-trainer { font-size: 0.73rem; color: #555; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .event-note { font-size: 0.7rem; font-style: italic; color: #d32f2f; margin-top: 0.15rem; }
+        .event-badge {
+            display: inline-block;
+            font-size: 0.65rem;
+            padding: 1px 4px;
+            border-radius: 3px;
+            font-weight: 700;
+            margin-top: 2px;
+        }
+        .badge-ferien { background-color: var(--warning-bg); color: var(--warning-text); border: 1px solid #ffe0b2; }
+        .badge-cancelled { background-color: #ffebee; color: var(--danger); border: 1px solid #ffcdd2; }
+
+        .admin-only-inline { display: none !important; }
+        body.admin-mode .admin-only-inline { display: inline-flex !important; }
+
+        .ferien-table-container {
+            background: white;
+            border-radius: 6px;
+            padding: 1rem;
+            border: 1px solid var(--border);
+        }
+
+        table.data-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 0.5rem;
+            font-size: 0.82rem;
+        }
+
+        table.data-table th, table.data-table td {
+            padding: 0.5rem 0.7rem;
+            border: 1px solid var(--border);
+            text-align: left;
+        }
+
+        table.data-table th { background: var(--accent); color: var(--primary-dark); }
+        table.data-table tr:nth-child(even) { background-color: #fafafa; }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.55);
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            padding: 1rem;
+        }
+
+        .modal-content {
+            background: white;
+            padding: 1.2rem;
+            border-radius: 8px;
+            width: 100%;
+            max-width: 440px;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.25);
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.8rem;
+            padding-bottom: 0.4rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .modal-header h3 { font-size: 1.05rem; color: var(--primary); }
+        .modal-close { background: none; border: none; font-size: 1.3rem; cursor: pointer; color: #666; }
+
+        .form-group { margin-bottom: 0.65rem; }
+        .form-group label { display: block; font-weight: 600; font-size: 0.8rem; margin-bottom: 0.2rem; color: #333; }
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 0.4rem 0.5rem;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            font-size: 0.85rem;
+            background-color: #fafafa;
+        }
+
+        .form-group input:focus, .form-group select:focus {
+            outline: none;
+            border-color: var(--primary);
+            background-color: #fff;
+        }
+
+        .month-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 1px;
+            background: var(--border);
+            border-radius: 6px;
+            overflow: hidden;
+        }
+        .month-day-cell {
+            background: white;
+            min-height: 90px;
+            padding: 0.3rem;
+            display: flex;
+            flex-direction: column;
+            font-size: 0.75rem;
+        }
+        .month-day-cell .day-num { font-weight: 700; text-align: right; margin-bottom: 0.2rem; }
+        .month-day-cell.other-month { background: #f9f9f9; opacity: 0.5; }
+    </style>
+</head>
+<body>
+
+<header>
+    <div class="header-title">
+        <h1>TSV Weiler zum Stein e.V.</h1>
+        <p>Hallenbelegungsplan & Terminverwaltung (BW Ferien 2026/2027)</p>
+    </div>
+    <div class="admin-controls">
+        <button id="adminLoginBtn" class="btn btn-primary" onclick="toggleAdminPrompt()">Admin-Login</button>
+        <button id="exportExcelBtn" class="btn btn-excel admin-only-inline" onclick="exportToExcel()">Excel Herunterladen (.xlsx)</button>
+        <button id="downloadHtmlBtn" class="btn btn-secondary admin-only-inline" onclick="downloadIndexHtml()">index.html herunterladen</button>
+    </div>
+</header>
+
+<nav class="tabs-nav">
+    <button class="tab-btn active" onclick="switchTab('planTab')">Belegungsplan</button>
+    <button class="tab-btn" onclick="switchTab('ferienTab')">Schul- & Faschingsferien BW 2026/2027</button>
+</nav>
+
+<main>
+    <div id="planTab" class="tab-content">
+        <div class="controls-bar">
+            <div class="week-nav">
+                <button class="btn btn-secondary" onclick="changeWeek(-1)">&larr; Vorherige</button>
+                <span id="currentWeekDisplay">KW -- (2026)</span>
+                <button class="btn btn-secondary" onclick="changeWeek(1)">Nächste &rarr;</button>
+                <button class="btn btn-primary" onclick="resetToCurrentWeek()" style="border: 1px solid #ccc;">Aktuelle Woche</button>
+            </div>
+
+            <div style="display: flex; gap: 0.8rem; align-items: center;">
+                <label style="font-size: 0.8rem; font-weight: 600; cursor: pointer;">
+                    <input type="checkbox" id="hideFerienCheck" onchange="renderSchedule()"> Ferientermine ausblenden
+                </label>
+                <div class="view-switcher">
+                    <button class="view-btn active" id="btnViewWeek" onclick="setViewMode('week')">Woche</button>
+                    <button class="view-btn" id="btnViewMonth" onclick="setViewMode('month')">Monat</button>
+                </div>
+                <button class="btn btn-primary admin-only-inline" style="background: var(--primary); color: white;" onclick="openAddModal()">+ Termin anlegen</button>
+            </div>
+        </div>
+
+        <div id="scheduleFocusTarget"></div>
+        <div id="weekViewContainer" class="grid-schedule"></div>
+        <div id="monthViewContainer" class="month-grid" style="display:none;"></div>
+    </div>
+
+    <div id="ferienTab" class="tab-content" style="display: none;">
+        <div class="ferien-table-container">
+            <h2 style="font-size: 1.1rem; color: var(--primary); margin-bottom: 0.3rem;">Schulferien & Bewegliche Ferientage Baden-Württemberg</h2>
+            <p style="margin-bottom: 0.8rem; color: #666; font-size: 0.8rem;">Übersicht aller Ferientermine und Faschingswochen für die Schuljahre 2025/2026 und 2026/2027.</p>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Ferienbezeichnung</th>
+                        <th>Startdatum</th>
+                        <th>Enddatum</th>
+                        <th>Schuljahr</th>
+                        <th>Geltungsbereich</th>
+                    </tr>
+                </thead>
+                <tbody id="ferienTableBody"></tbody>
+            </table>
+        </div>
+    </div>
+</main>
+
+<div id="eventModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 id="modalTitle">Termin bearbeiten / absagen</h3>
+            <button class="modal-close" onclick="closeModal()">&times;</button>
+        </div>
+        <form id="eventForm" onsubmit="saveEvent(event)">
+            <input type="hidden" id="editEventId">
+            <input type="hidden" id="editEventDate">
+            
+            <div class="form-group">
+                <label>Gruppe / Angebot</label>
+                <input type="text" id="editGroup" required>
+            </div>
+            
+            <div class="form-group">
+                <label>Uhrzeit</label>
+                <input type="text" id="editTime" placeholder="z.B. 16:00 - 17:00" required>
+            </div>
+            
+            <div class="form-group">
+                <label>Übungsleiter:in</label>
+                <input type="text" id="editTrainer" required>
+            </div>
+            
+            <div class="form-group">
+                <label>Hinweis / Ort</label>
+                <input type="text" id="editNote" placeholder="z.B. Sporthalle 'Ob den Gärten'">
+            </div>
+            
+            <div class="form-group">
+                <label>Status</label>
+                <select id="editStatus">
+                    <option value="Regulär">Regulär</option>
+                    <option value="Ausfall">Ausfall (Abgesagt)</option>
+                    <option value="Ferien">Ferien</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label>Absagegrund / Admin-Kommentar</label>
+                <input type="text" id="editComment" placeholder="z.B. Halle belegt / Trainer krank">
+            </div>
+            
+            <div style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1rem; padding-top: 0.5rem; border-top: 1px solid var(--border);">
+                <button type="button" class="btn btn-secondary" onclick="closeModal()">Abbrechen</button>
+                <button type="submit" class="btn btn-excel">Speichern</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+    const ADMIN_PASS = "TSV-Weiler";
+    let isAdmin = false;
+    let currentMode = "week";
+    let selectedDate = new Date(2026, 9, 26); // Default to Oct 26, 2026
+
+    const ferienData = [
+        { title: "Faschingsferien 2026", start: "2026-02-16", end: "2026-02-20", year: "2025/2026", area: "BW & Leutenbach" },
+        { title: "Osterferien 2026", start: "2026-03-30", end: "2026-04-11", year: "2025/2026", area: "Baden-Württemberg" },
+        { title: "Pfingstferien 2026", start: "2026-05-26", end: "2026-06-05", year: "2025/2026", area: "Baden-Württemberg" },
+        { title: "Sommerferien 2026", start: "2026-07-30", end: "2026-09-12", year: "2025/2026", area: "Baden-Württemberg" },
+        { title: "Herbstferien 2026", start: "2026-10-26", end: "2026-10-30", year: "2026/2027", area: "Baden-Württemberg" },
+        { title: "Weihnachtsferien 2026/27", start: "2026-12-23", end: "2027-01-09", year: "2026/2027", area: "Baden-Württemberg" },
+        { title: "Faschingsferien 2027", start: "2027-02-08", end: "2027-02-12", year: "2026/2027", area: "BW & Leutenbach" },
+        { title: "Osterferien 2027", start: "2027-03-30", end: "2027-04-10", year: "2026/2027", area: "Baden-Württemberg" },
+        { title: "Pfingstferien 2027", start: "2027-05-18", end: "2027-05-29", year: "2026/2027", area: "Baden-Württemberg" },
+        { title: "Sommerferien 2027", start: "2027-07-29", end: "2027-09-11", year: "2026/2027", area: "Baden-Württemberg" }
+    ];
+
+    const weeklyTemplate = {
+        "Montag": [
+            { time: "14:15 - 15:15", group: "Seniorengymnastik", trainer: "Alexandra Strohmaier", note: "" },
+            { time: "15:30 - 16:30", group: "Ball- und Breitensport", trainer: "Micha Krautter", note: "" },
+            { time: "16:30 - 17:30", group: "Sportmix Klassen 1 + 2", trainer: "Marisol Reyes Sanmartin", note: "" },
+            { time: "18:00 - 19:00", group: "Pilates", trainer: "Marisol Reyes Sanmartin", note: "" },
+            { time: "19:15 - 20:00", group: "Jedermänner Volleyball", trainer: "Berthold Schremmer", note: "" },
+            { time: "20:00 - 22:00", group: "Jedermänner", trainer: "Berthold Schremmer", note: "" }
+        ],
+        "Dienstag": [
+            { time: "15:00 - 16:00", group: "Kinderturnen (4-5 J.)", trainer: "Andreas Rosanelli", note: "" },
+            { time: "16:00 - 17:00", group: "Eltern-Kind-Turnen", trainer: "Susanne Brehmer", note: "" },
+            { time: "18:30 - 19:00", group: "Rund ums Rad", trainer: "Thomas Müller", note: "nach Ankündigung" },
+            { time: "19:00 - 20:30", group: "Gemischter Chor", trainer: "Aleksandra Lustig", note: "" },
+            { time: "19:00 - 20:30", group: "Tischtennis & Federball ab 10 J.", trainer: "René Kunze / Stefan Zickler", note: "!!! ab 06.10.2026 !!!" },
+            { time: "20:30 - 22:00", group: "Federball 16+", trainer: "Nico Mitreuter", note: "" },
+            { time: "20:00 - 22:00", group: "Volleyball Mixed & Volleyball", trainer: "Alexander Blessing / Franziska Degenhardt", note: "Halle 'Ob den Gärten'" }
+        ],
+        "Mittwoch": [
+            { time: "15:30 - 16:45", group: "Rollator-Fit ®", trainer: "Annette Pauleit", note: "" },
+            { time: "17:00 - 18:00", group: "Mixed Kids ab Kl. 3", trainer: "Christina Trautwein", note: "" },
+            { time: "18:00 - 19:00", group: "Active Balance", trainer: "Edyta Chlebek", note: "" },
+            { time: "19:00 - 20:00", group: "Body fit & Rücken", trainer: "Edyta Chlebek", note: "" },
+            { time: "20:00 - 22:00", group: "Volleyball Herren", trainer: "Stefan Zickler", note: "" }
+        ],
+        "Donnerstag": [
+            { time: "15:00 - 16:00", group: "Kinderturnen (5-6 J.)", trainer: "Analisa Schmidt", note: "" },
+            { time: "16:00 - 17:00", group: "Eltern-Kind-Turnen", trainer: "Analisa Schmidt", note: "" },
+            { time: "19:30 - 20:30", group: "Ready for Power", trainer: "Kristin Linzner", note: "" }
+        ],
+        "Freitag": [
+            { time: "15:00 - 16:00", group: "Jazz Dance ab 7 J.", trainer: "Susanne Schlegel", note: "" },
+            { time: "16:00 - 17:00", group: "Volleyball Kids", trainer: "H. Kuch, M. Krautter, J. Odida", note: "" }
+        ],
+        "Wochenende": []
+    };
+
+    let overrides = JSON.parse(localStorage.getItem('tsv_overrides') || '{}');
+
+    function scrollToScheduleFocus() {
+        const target = document.getElementById('scheduleFocusTarget');
+        if (target) {
+            target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    }
+
+    function init() {
+        renderFerienTable();
+        renderSchedule();
+        setTimeout(scrollToScheduleFocus, 100);
+    }
+
+    function toggleAdminPrompt() {
+        if (isAdmin) {
+            isAdmin = false;
+            document.body.classList.remove('admin-mode');
+            document.getElementById('adminLoginBtn').innerText = 'Admin-Login';
+            renderSchedule();
+            return;
+        }
+
+        const pass = prompt('Bitte Admin-Passwort eingeben:');
+        if (pass === ADMIN_PASS) {
+            isAdmin = true;
+            document.body.classList.add('admin-mode');
+            document.getElementById('adminLoginBtn').innerText = 'Admin-Abmelden';
+            renderSchedule();
+        } else if (pass !== null) {
+            alert('Falsches Passwort!');
+        }
+    }
+
+    function switchTab(tabId) {
+        document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.style.display = 'none');
+        
+        if (tabId === 'planTab') {
+            document.querySelectorAll('.tab-btn')[0].classList.add('active');
+            document.getElementById('planTab').style.display = 'block';
+            setTimeout(scrollToScheduleFocus, 50);
+        } else {
+            document.querySelectorAll('.tab-btn')[1].classList.add('active');
+            document.getElementById('ferienTab').style.display = 'block';
+        }
+    }
+
+    function isDateInFerien(dateStr) {
+        for (let f of ferienData) {
+            if (dateStr >= f.start && dateStr <= f.end) {
+                return f.title;
+            }
+        }
+        return null;
+    }
+
+    function getMonday(d) {
+        const date = new Date(d);
+        const day = date.getDay();
+        const diff = date.getDate() - day + (day === 0 ? -6 : 1);
+        return new Date(date.setDate(diff));
+    }
+
+    function formatDate(d) {
+        return d.toISOString().split('T')[0];
+    }
+
+    function formatGermanDate(d) {
+        return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    }
+
+    function getWeekNumber(d) {
+        const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+        const dayNum = date.getUTCDay() || 7;
+        date.setUTCDate(date.getUTCDate() + 4 - dayNum);
+        const yearStart = new Date(Date.UTC(date.getUTCFullYear(),0,1));
+        return Math.ceil((((date - yearStart) / 86400000) + 1)/7);
+    }
+
+    function changeWeek(offset) {
+        selectedDate.setDate(selectedDate.getDate() + (offset * 7));
+        renderSchedule();
+    }
+
+    function resetToCurrentWeek() {
+        selectedDate = new Date();
+        renderSchedule();
+    }
+
+    function setViewMode(mode) {
+        currentMode = mode;
+        document.getElementById('btnViewWeek').classList.toggle('active', mode === 'week');
+        document.getElementById('btnViewMonth').classList.toggle('active', mode === 'month');
+        document.getElementById('weekViewContainer').style.display = mode === 'week' ? 'grid' : 'none';
+        document.getElementById('monthViewContainer').style.display = mode === 'month' ? 'grid' : 'none';
+        renderSchedule();
+    }
+
+    function renderSchedule() {
+        const monday = getMonday(selectedDate);
+        const kw = getWeekNumber(monday);
+        document.getElementById('currentWeekDisplay').innerText = `KW ${kw} (${monday.getFullYear()})`;
+
+        if (currentMode === 'week') {
+            renderWeekView(monday);
+        } else {
+            renderMonthView(selectedDate);
+        }
+    }
+
+    function renderWeekView(monday) {
+        const container = document.getElementById('weekViewContainer');
+        container.innerHTML = '';
+        const hideFerien = document.getElementById('hideFerienCheck').checked;
+
+        const days = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Wochenende"];
+
+        days.forEach((dayName, idx) => {
+            const currentDate = new Date(monday);
+            if (idx < 5) {
+                currentDate.setDate(monday.getDate() + idx);
+            } else {
+                currentDate.setDate(monday.getDate() + 5);
+            }
+
+            const dateStr = formatDate(currentDate);
+            const ferienTitle = isDateInFerien(dateStr);
+
+            const col = document.createElement('div');
+            col.className = 'day-column';
+
+            let dayTitleHtml = `<h3>${dayName}</h3><div class="day-date">${idx === 5 ? 'Sa/So' : formatGermanDate(currentDate)}</div>`;
+            if (ferienTitle) {
+                dayTitleHtml += `<div class="event-badge badge-ferien" style="margin-top:2px;">${ferienTitle}</div>`;
+            }
+
+            let events = [];
+            const dayKey = dayName;
+            if (weeklyTemplate[dayKey]) {
+                events = weeklyTemplate[dayKey].map((ev, i) => ({ ...ev, id: `${dateStr}_${i}`, dateStr, status: ev.status || 'Regulär' }));
+            }
+
+            if (overrides[dateStr]) {
+                events = overrides[dateStr];
+            }
+
+            let eventsHtml = '';
+            events.forEach(ev => {
+                const isFerien = ferienTitle || ev.status === 'Ferien';
+                if (hideFerien && isFerien) return;
+
+                const isCancelled = ev.status === 'Ausfall';
+
+                eventsHtml += `
+                    <div class="event-card ${isCancelled ? 'cancelled' : ''} ${isFerien ? 'ferien' : ''}">
+                        <div class="event-time">${ev.time}</div>
+                        <div class="event-title">${ev.group}</div>
+                        <div class="event-trainer">👤 ${ev.trainer}</div>
+                        ${ev.note ? `<div class="event-note">${ev.note}</div>` : ''}
+                        ${ev.comment ? `<div class="event-note">⚠️ ${ev.comment}</div>` : ''}
+                        ${isCancelled ? '<span class="event-badge badge-cancelled">AUSFALL</span>' : ''}
+                        ${isFerien ? `<span class="event-badge badge-ferien">${ferienTitle || 'Ferien'}</span>` : ''}
+                        ${isAdmin ? `<button class="btn btn-danger" style="padding:1px 4px; font-size:0.7rem; margin-top:4px;" onclick="openEditModal('${ev.id}', '${dateStr}', '${ev.group.replace(/'/g, "\\'")}', '${ev.time}', '${ev.trainer.replace(/'/g, "\\'")}', '${(ev.note||'').replace(/'/g, "\\'")}', '${ev.status || ''}', '${(ev.comment||'').replace(/'/g, "\\'")}')">Bearbeiten</button>` : ''}
+                    </div>
+                `;
+            });
+
+            if (!eventsHtml) {
+                eventsHtml = `<div style="text-align:center; color:#999; padding:0.8rem 0.2rem; font-size:0.75rem;">Frei</div>`;
+            }
+
+            col.innerHTML = `
+                <div class="day-header">${dayTitleHtml}</div>
+                <div class="event-list">${eventsHtml}</div>
+            `;
+            container.appendChild(col);
+        });
+    }
+
+    function renderMonthView(refDate) {
+        const container = document.getElementById('monthViewContainer');
+        container.innerHTML = '';
+        
+        const year = refDate.getFullYear();
+        const month = refDate.getMonth();
+        
+        const firstDay = new Date(year, month, 1);
+        const lastDay = new Date(year, month + 1, 0);
+
+        let startDay = firstDay.getDay() - 1;
+        if (startDay === -1) startDay = 6;
+
+        for (let i = 0; i < startDay; i++) {
+            const emptyCell = document.createElement('div');
+            emptyCell.className = 'month-day-cell other-month';
+            container.appendChild(emptyCell);
+        }
+
+        for (let d = 1; d <= lastDay.getDate(); d++) {
+            const cellDate = new Date(year, month, d);
+            const dateStr = formatDate(cellDate);
+            const ferienTitle = isDateInFerien(dateStr);
+
+            const cell = document.createElement('div');
+            cell.className = 'month-day-cell';
+            if (ferienTitle) cell.style.backgroundColor = '#fff8e1';
+
+            cell.innerHTML = `
+                <div class="day-num">${d}</div>
+                ${ferienTitle ? `<div style="font-size:0.65rem; color:var(--warning-text); font-weight:bold;">${ferienTitle}</div>` : ''}
+            `;
+            container.appendChild(cell);
+        }
+    }
+
+    function renderFerienTable() {
+        const tbody = document.getElementById('ferienTableBody');
+        tbody.innerHTML = '';
+        ferienData.forEach(f => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td><strong>${f.title}</strong></td>
+                <td>${formatGermanDate(new Date(f.start))}</td>
+                <td>${formatGermanDate(new Date(f.end))}</td>
+                <td>${f.year}</td>
+                <td>${f.area}</td>
+            `;
+            tbody.appendChild(row);
+        });
+    }
+
+    function openEditModal(id, dateStr, group, time, trainer, note, status, comment) {
+        document.getElementById('editEventId').value = id;
+        document.getElementById('editEventDate').value = dateStr;
+        document.getElementById('editGroup').value = group;
+        document.getElementById('editTime').value = time;
+        document.getElementById('editTrainer').value = trainer;
+        document.getElementById('editNote').value = note;
+        document.getElementById('editStatus').value = status || 'Regulär';
+        document.getElementById('editComment').value = comment;
+        document.getElementById('eventModal').style.display = 'flex';
+    }
+
+    function openAddModal() {
+        const todayStr = formatDate(selectedDate);
+        openEditModal(`new_${Date.now()}`, todayStr, '', '18:00 - 19:00', '', '', 'Regulär', '');
+    }
+
+    function closeModal() {
+        document.getElementById('eventModal').style.display = 'none';
+    }
+
+    function saveEvent(e) {
+        e.preventDefault();
+        const id = document.getElementById('editEventId').value;
+        const dateStr = document.getElementById('editEventDate').value;
+        const dayName = ["Sonntag","Montag","Dienstag","Mittwoch","Donnerstag","Freitag","Samstag"][new Date(dateStr).getDay()];
+
+        if (!overrides[dateStr]) {
+            if (weeklyTemplate[dayName]) {
+                overrides[dateStr] = weeklyTemplate[dayName].map((ev, i) => ({ ...ev, id: `${dateStr}_${i}`, dateStr, status: ev.status || 'Regulär' }));
+            } else {
+                overrides[dateStr] = [];
+            }
+        }
+
+        const evData = {
+            id,
+            dateStr,
+            time: document.getElementById('editTime').value,
+            group: document.getElementById('editGroup').value,
+            trainer: document.getElementById('editTrainer').value,
+            note: document.getElementById('editNote').value,
+            status: document.getElementById('editStatus').value,
+            comment: document.getElementById('editComment').value
+        };
+
+        const existingIdx = overrides[dateStr].findIndex(item => item.id === id);
+        if (existingIdx >= 0) {
+            overrides[dateStr][existingIdx] = evData;
+        } else {
+            overrides[dateStr].push(evData);
+        }
+
+        localStorage.setItem('tsv_overrides', JSON.stringify(overrides));
+        closeModal();
+        renderSchedule();
+    }
+
+    function exportToExcel() {
+        if (!isAdmin) return;
+
+        const wb = XLSX.utils.book_new();
+        const exportData = [];
+
+        const startDate = new Date(2025, 8, 1); // 01.09.2025
+        const endDate = new Date(2026, 7, 30);   // 30.08.2026
+
+        for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+            const dateStr = formatDate(d);
+            const dayName = ["Sonntag","Montag","Dienstag","Mittwoch","Donnerstag","Freitag","Samstag"][d.getDay()];
+            const ferienTitle = isDateInFerien(dateStr);
+
+            let dayEvents = weeklyTemplate[dayName] ? weeklyTemplate[dayName].map((ev, i) => ({ ...ev, id: `${dateStr}_${i}`, dateStr, status: ev.status || 'Regulär' })) : [];
+            if (overrides[dateStr]) dayEvents = overrides[dateStr];
+
+            dayEvents.forEach(ev => {
+                exportData.push({
+                    "Datum": formatGermanDate(d),
+                    "Wochentag": dayName,
+                    "Uhrzeit": ev.time,
+                    "Gruppe / Angebot": ev.group,
+                    "Übungsleiter:in": ev.trainer,
+                    "Status": ev.status || (ferienTitle ? 'Ferien' : 'Regulär'),
+                    "Ferien-Info": ferienTitle || '',
+                    "Admin-Kommentar": ev.comment || ''
+                });
+            });
+        }
+
+        const ws = XLSX.utils.json_to_sheet(exportData);
+        XLSX.utils.book_append_sheet(wb, ws, "Belegungsplan");
+        XLSX.writeFile(wb, "TSV_Weiler_zum_Stein_Termine_01Sep25_30Aug26.xlsx");
+    }
+
+    function downloadIndexHtml() {
+        if (!isAdmin) return;
+        const htmlContent = "<!DOCTYPE html>\n" + document.documentElement.outerHTML;
+        const blob = new Blob([htmlContent], { type: 'text/html' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'index.html';
+        a.click();
+    }
+
+    window.onload = init;
+</script>
+</body>
+</html>
